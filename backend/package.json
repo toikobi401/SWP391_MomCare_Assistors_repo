@@ -23,6 +23,7 @@
     "jsonwebtoken": "^9.0.2",
     "mssql": "^11.0.1",
     "multer": "^2.0.2",
+    "node-fetch": "^2.7.0",
     "nodemailer": "^7.0.6",
     "socket.io": "^4.8.1",
     "streamifier": "^0.1.1"

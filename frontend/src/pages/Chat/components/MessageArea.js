@@ -85,6 +85,7 @@ export const MessageArea = ({ conversation, currentUser, onConversationUpdate })
       // Chỉ add message nếu đang xem conversation này
       if (conversationId === conversation?.ConversationID) {
         console.log("📩 New message received:", message);
+        console.log("📎 Message attachments:", message.Attachments || message.attachments);
         setMessages((prevMessages) => {
           // Kiểm tra xem message đã tồn tại chưa (tránh duplicate)
           const exists = prevMessages.some(m => m.MessageID === message.MessageID);
@@ -212,6 +213,7 @@ export const MessageArea = ({ conversation, currentUser, onConversationUpdate })
 
       // Upload file nếu có
       if (selectedFile) {
+        toast.loading("Đang tải file lên...", { id: "upload" });
         const uploadResponse = await uploadChatFile(selectedFile);
         if (uploadResponse.code === 200) {
           attachments.push({
@@ -219,6 +221,7 @@ export const MessageArea = ({ conversation, currentUser, onConversationUpdate })
             fileSize: uploadResponse.data.fileSize,
             url: uploadResponse.data.url,
           });
+          toast.success("Tải file thành công! Đang gửi tin nhắn...", { id: "upload" });
         }
       }
 
@@ -238,6 +241,12 @@ export const MessageArea = ({ conversation, currentUser, onConversationUpdate })
         // WebSocket sẽ tự động emit event "new_message" và cập nhật cho TẤT CẢ người dùng (bao gồm cả người gửi)
         // Điều này tránh duplicate message ở phía người gửi
         // Và KHÔNG tự động scroll để giữ nguyên vị trí đang đọc
+        
+        // Dismiss upload toast và hiển thị thành công
+        if (selectedFile) {
+          toast.success("Tin nhắn đã được gửi thành công!", { id: "upload" });
+        }
+        
         setMessageText("");
         setSelectedFile(null);
         if (fileInputRef.current) {
@@ -466,10 +475,19 @@ export const MessageArea = ({ conversation, currentUser, onConversationUpdate })
                     ) : message.MessageType === "file" ? (
                       <div className="message-file">
                         {(() => {
-                          // Kiểm tra xem có file ảnh không
-                          const fileName = message.Attachments?.[0]?.OriginalFileName || message.Content || "";
-                          const fileUrl = message.Attachments?.[0]?.StorageURL || "";
+                          // Kiểm tra xem có file ảnh không (handle cả Attachments và attachments)
+                          const attachments = message.Attachments || message.attachments || [];
+                          const fileName = attachments[0]?.OriginalFileName || message.Content || "";
+                          const fileUrl = attachments[0]?.StorageURL || "";
                           const isImage = isImageFile(fileName);
+                          
+                          // Debug log
+                          console.log(`🖼️ Rendering file message ${message.MessageID}:`, {
+                            attachments,
+                            fileName,
+                            fileUrl,
+                            isImage
+                          });
 
                           if (isImage && fileUrl) {
                             // Hiển thị hình ảnh
@@ -568,6 +586,7 @@ export const MessageArea = ({ conversation, currentUser, onConversationUpdate })
               type="submit"
               className="btn btn-primary btn-send"
               disabled={sending || (!messageText.trim() && !selectedFile)}
+              title={sending && selectedFile ? "Đang gửi file..." : sending ? "Đang gửi tin nhắn..." : "Gửi tin nhắn"}
             >
               {sending ? (
                 <span

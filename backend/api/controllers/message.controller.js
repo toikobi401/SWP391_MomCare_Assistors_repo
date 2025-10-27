@@ -1,5 +1,6 @@
 const MessageModel = require("../models/messageModel");
 const AttachmentModel = require("../models/attachmentModel");
+const fetch = require('node-fetch');
 
 /**
  * [GET] /api/messages/:conversationId
@@ -14,12 +15,8 @@ module.exports.getMessages = async (req, res) => {
 
     const messages = await MessageModel.getMessagesByConversationId(conversationId, limit, offset);
 
-    // Lấy attachments cho mỗi message
-    for (let message of messages) {
-      if (message.AttachmentCount > 0) {
-        message.attachments = await AttachmentModel.getAttachmentsByMessageId(message.MessageID);
-      }
-    }
+    // Attachments đã được load trong messageModel.getMessagesByConversationId()
+    // Không cần load lại ở đây
 
     return res.json({
       code: 200,
@@ -101,7 +98,34 @@ module.exports.sendUserMessage = async (req, res) => {
 
     // Lấy lại message vừa tạo
     const message = await MessageModel.getMessageById(messageId);
-    message.attachments = await AttachmentModel.getAttachmentsByMessageId(messageId);
+    message.Attachments = await AttachmentModel.getAttachmentsByMessageId(messageId);
+    
+    console.log(`📤 Sending message ${messageId} with attachments:`, message.Attachments);
+
+    // Nếu có attachments, delay và verify URL accessibility
+    if (attachments && attachments.length > 0) {
+      console.log(`Delaying socket emission for ${attachments.length} attachment(s)...`);
+      
+      // Delay đầu tiên để đảm bảo upload hoàn thành
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Delay 3 giây
+      
+      // Verify attachment URLs accessibility (simple check)
+      for (let attachment of attachments) {
+        if (attachment.url) {
+          try {
+            const response = await fetch(attachment.url, { method: 'HEAD' });
+            if (!response.ok) {
+              console.warn(`Attachment URL not accessible yet: ${attachment.url}`);
+              // Thêm delay thêm 2 giây nếu URL chưa accessible
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+          } catch (error) {
+            console.warn(`Error checking attachment URL: ${attachment.url}`, error.message);
+            // Vẫn tiếp tục, không block việc emit
+          }
+        }
+      }
+    }
 
     // Emit socket event để notify real-time
     const io = req.app.get('io');
