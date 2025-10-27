@@ -111,6 +111,46 @@ module.exports.createConversation = async (req, res) => {
 };
 
 /**
+ * [POST] /api/conversations/create-private
+ * Tạo hoặc lấy cuộc hội thoại 1-1 (tương tự Messenger)
+ * Body: { userId1, userId2 }
+ */
+module.exports.createPrivateConversation = async (req, res) => {
+  try {
+    const { userId1, userId2 } = req.body;
+
+    if (!userId1 || !userId2) {
+      return res.status(400).json({
+        code: 400,
+        message: "Thiếu thông tin: userId1, userId2!",
+      });
+    }
+
+    if (userId1 === userId2) {
+      return res.status(400).json({
+        code: 400,
+        message: "Không thể tạo cuộc hội thoại với chính mình!",
+      });
+    }
+
+    const conversation = await ConversationModel.createOrGetPrivateConversation(userId1, userId2);
+
+    return res.json({
+      code: 200,
+      message: "Lấy/tạo cuộc hội thoại 1-1 thành công!",
+      data: conversation,
+    });
+  } catch (error) {
+    console.error("Error creating private conversation:", error);
+    return res.status(500).json({
+      code: 500,
+      message: "Lỗi khi tạo cuộc hội thoại 1-1!",
+      error: error.message,
+    });
+  }
+};
+
+/**
  * [POST] /api/conversations/:conversationId/add-participant
  * Thêm participant vào conversation
  * Body: { userId, modelId }

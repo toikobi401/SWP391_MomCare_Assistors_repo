@@ -30,6 +30,32 @@ export const MessageArea = ({ conversation, currentUser, onConversationUpdate })
   const [editingText, setEditingText] = useState("");
   const [hoveredMessageId, setHoveredMessageId] = useState(null);
 
+  // Hàm để lấy tên hiển thị cho conversation (cùng logic với ConversationList)
+  const getConversationDisplayName = () => {
+    // Merge data từ conversation prop và conversationDetail 
+    const mergedConv = { ...conversation, ...conversationDetail };
+    
+    // Nếu là chat trực tiếp (2 người), hiển thị tên của người kia
+    if (mergedConv?.ParticipantCount === 2 && mergedConv?.OtherUserName) {
+      return mergedConv.OtherUserName;
+    }
+    
+    // Nếu là group chat (>2 người), hiển thị tên do người tạo đặt
+    if (mergedConv?.ParticipantCount > 2) {
+      // Nếu có tên custom thì dùng tên custom
+      if (mergedConv?.Name && mergedConv?.Name.trim() !== '') {
+        return mergedConv.Name;
+      }
+      // Nếu không có tên custom, hiển thị danh sách tên participants
+      else if (mergedConv?.AllParticipantNames) {
+        return mergedConv.AllParticipantNames;
+      }
+    }
+    
+    // Fallback: hiển thị tên default hoặc "Cuộc trò chuyện"
+    return mergedConv?.Name || "Cuộc trò chuyện";
+  };
+
   useEffect(() => {
     if (conversation) {
       loadMessages();
@@ -311,16 +337,16 @@ export const MessageArea = ({ conversation, currentUser, onConversationUpdate })
       <div className="message-area-header">
         <div className="d-flex align-items-center">
           <div className="conversation-avatar me-3">
-            {conversationDetail?.ParticipantCount > 2 ? (
+            {(conversationDetail?.ParticipantCount || conversation?.ParticipantCount || 0) > 2 ? (
               <i className="fas fa-users"></i>
             ) : (
               <i className="fas fa-user"></i>
             )}
           </div>
           <div>
-            <h6 className="mb-0">{conversation.Name || "Cuộc trò chuyện"}</h6>
+            <h6 className="mb-0">{getConversationDisplayName()}</h6>
             <small className="text-muted">
-              {conversationDetail?.ParticipantCount || 0} thành viên
+              {conversationDetail?.ParticipantCount || conversation?.ParticipantCount || 0} thành viên
             </small>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { getUsersByRole, createConversation } from "../../../services/chatApi";
+import { getUsersByRole, createPrivateConversation } from "../../../services/chatApi";
 import toast from "react-hot-toast";
 
 export const ExpertList = ({ currentUser, onConversationCreated, onBack }) => {
@@ -33,22 +33,26 @@ export const ExpertList = ({ currentUser, onConversationCreated, onBack }) => {
 
   const handleStartChat = async (expert) => {
     try {
-      // Tạo conversation 1-1 với expert
-      const conversationData = {
-        name: `${currentUser.Fullname} - ${expert.Fullname}`,
-        creatorUserId: currentUser.UserID,
-        participantUserIds: [currentUser.UserID, expert.UserID],
-        modelId: null, // Không có AI model cho chat 1-1
-      };
-
-      const response = await createConversation(conversationData);
+      // Tạo hoặc lấy cuộc hội thoại 1-1 với expert (tương tự Messenger)
+      const response = await createPrivateConversation(currentUser.UserID, expert.UserID);
+      
       if (response.code === 200) {
-        toast.success(`Đã tạo đoạn chat với ${expert.Fullname}`);
+        const conversation = response.data;
+        
+        // Kiểm tra xem đây là conversation mới hay đã tồn tại
+        const isNewConversation = new Date(conversation.CreateAt).getTime() > (Date.now() - 5000); // Trong vòng 5 giây vừa rồi
+        
+        if (isNewConversation) {
+          toast.success(`Đã tạo cuộc trò chuyện mới với ${expert.Fullname}`);
+        } else {
+          toast.info(`Đã mở cuộc trò chuyện với ${expert.Fullname}`);
+        }
+        
         onConversationCreated();
       }
     } catch (error) {
-      console.error("Error creating conversation:", error);
-      toast.error("Không thể tạo đoạn chat");
+      console.error("Error creating/getting private conversation:", error);
+      toast.error("Không thể tạo hoặc mở cuộc trò chuyện");
     }
   };
 

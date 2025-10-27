@@ -12,6 +12,9 @@ router.get("/:conversationId", controller.getConversationDetail);
 // Tạo conversation mới
 router.post("/create", controller.createConversation);
 
+// Tạo hoặc lấy cuộc hội thoại 1-1 (tương tự Messenger)
+router.post("/create-private", controller.createPrivateConversation);
+
 // Thêm participant
 router.post("/:conversationId/add-participant", controller.addParticipant);
 

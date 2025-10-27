@@ -51,6 +51,26 @@ export const createConversation = async (data) => {
 };
 
 /**
+ * Tạo hoặc lấy cuộc hội thoại 1-1 (tương tự Messenger)
+ * @param {number} userId1 - ID user thứ nhất
+ * @param {number} userId2 - ID user thứ hai
+ */
+export const createPrivateConversation = async (userId1, userId2) => {
+  try {
+    const response = await axios.post(`${API_URL}/conversations/create-private`, {
+      userId1,
+      userId2
+    }, {
+      withCredentials: true,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error creating private conversation:", error);
+    throw error;
+  }
+};
+
+/**
  * Thêm participant vào conversation
  */
 export const addParticipant = async (conversationId, userId, modelId = null) => {

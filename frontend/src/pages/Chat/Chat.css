@@ -6,6 +6,7 @@
   background: #f0f2f5;
   overflow: hidden; /* Ẩn scroll của toàn bộ container */
   position: relative;
+  margin-top: 120px;
 }
 
 .chat-layout {
@@ -139,6 +140,12 @@
   margin-bottom: 4px;
 }
 
+.conversation-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .conversation-name {
   font-size: 15px;
   font-weight: 600;
@@ -146,12 +153,32 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
 }
 
 .conversation-time {
   font-size: 13px;
   color: #65676b;
   flex-shrink: 0;
+}
+
+.conversation-delete-btn {
+  padding: 2px 6px;
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  border: 1px solid #dc3545;
+  background: transparent;
+  color: #dc3545;
+}
+
+.conversation-delete-btn:hover {
+  background-color: #dc3545;
+  color: white;
+}
+
+.conversation-item:hover .conversation-delete-btn {
+  opacity: 1;
 }
 
 .conversation-message {

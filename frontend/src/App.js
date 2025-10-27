@@ -13,6 +13,10 @@ import { BlogGrid } from "./pages/Blog/BlogGrid";
 import { BlogDetails } from "./pages/Blog/BlogDetails";
 import { ProtectedRoute } from "./components/Route/ProtectedRoute";
 import { ForgotPasswordPage } from "./pages/Auth/ForgotPassword";
+
+// React Toastify
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { DashboardPage } from "./pages/Dashboard/DashboardPage";
 import { ProtectedAdminRoute } from "./components/Route/ProtectedAdminRoute";
 import { OvulationCal } from "./pages/Service/OvulationCal";
@@ -68,6 +72,20 @@ function App() {
             <Route path="calweight" element={<EstimatedWeight />} />
             <Route path="*" element={<Error404Page />} />
           </Routes>
+          
+          {/* Toast notifications container */}
+          <ToastContainer
+            position="top-right"
+            autoClose={3000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="light"
+          />
         </SocketProvider>
       </BrowserRouter>
     </>

@@ -6,7 +6,7 @@ import { MessageArea } from "./components/MessageArea";
 import { ExpertList } from "./components/ExpertList";
 import { CreateGroupModal } from "./components/CreateGroupModal";
 import { getUserConversations } from "../../services/chatApi";
-import toast from "react-hot-toast";
+import { toast } from "react-toastify";
 import "./Chat.css";
 
 export const Chat = () => {
@@ -109,6 +109,7 @@ export const Chat = () => {
             onCreateGroup={handleCreateGroup}
             loading={loading}
             currentUser={infoUser}
+            onDeleteConversation={loadConversations} // Refresh danh sách sau khi xóa
           />
         </div>
 

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import { deleteConversation } from "../../../services/chatApi";
+import { toast } from "react-toastify";
 
 export const ConversationList = ({
   conversations,
@@ -10,17 +12,104 @@ export const ConversationList = ({
   onCreateGroup,
   loading,
   currentUser,
+  onDeleteConversation, // Thêm callback để refresh danh sách sau khi xóa
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Hàm để lấy tên hiển thị cho conversation 
+  const getConversationDisplayName = (conversation) => {
+    // Nếu là chat trực tiếp (2 người), hiển thị tên của người kia
+    if (conversation.ParticipantCount === 2 && conversation.OtherUserName) {
+      return conversation.OtherUserName;
+    }
+    
+    // Nếu là group chat (>2 người), hiển thị tên do người tạo đặt
+    if (conversation.ParticipantCount > 2) {
+      // Nếu có tên custom thì dùng tên custom
+      if (conversation.Name && conversation.Name.trim() !== '') {
+        return conversation.Name;
+      }
+      // Nếu không có tên custom, hiển thị danh sách tên participants
+      else if (conversation.AllParticipantNames) {
+        return conversation.AllParticipantNames;
+      }
+    }
+    
+    // Fallback: hiển thị tên default hoặc "Cuộc trò chuyện"
+    return conversation.Name || "Cuộc trò chuyện";
+  };
 
   // Lọc conversations theo search
   const filteredConversations = conversations.filter((conv) => {
     const searchLower = searchTerm.toLowerCase();
+    const displayName = getConversationDisplayName(conv);
+    
     return (
+      displayName?.toLowerCase().includes(searchLower) ||
       conv.Name?.toLowerCase().includes(searchLower) ||
-      conv.LastMessage?.toLowerCase().includes(searchLower)
+      conv.LastMessage?.toLowerCase().includes(searchLower) ||
+      conv.OtherUserName?.toLowerCase().includes(searchLower) ||
+      conv.AllParticipantNames?.toLowerCase().includes(searchLower)
     );
   });
+
+  // Hàm để lấy avatar cho conversation
+  const getConversationAvatar = (conversation) => {
+    if (conversation.ParticipantCount > 2) {
+      return (
+        <div className="avatar-group">
+          <i className="fas fa-users"></i>
+        </div>
+      );
+    } else {
+      return (
+        <div className="avatar-single">
+          {conversation.OtherUserAvatar ? (
+            <img 
+              src={conversation.OtherUserAvatar} 
+              alt={conversation.OtherUserName || "User"} 
+              className="rounded-circle"
+              style={{ width: "40px", height: "40px", objectFit: "cover" }}
+            />
+          ) : (
+            <i className="fas fa-user"></i>
+          )}
+        </div>
+      );
+    }
+  };
+
+  // Hàm xử lý xóa conversation
+  const handleDeleteConversation = async (conversation, e) => {
+    e.stopPropagation(); // Ngăn chặn việc select conversation khi click nút xóa
+    
+    const displayName = getConversationDisplayName(conversation);
+    const confirmMessage = `Bạn có chắc chắn muốn xóa cuộc trò chuyện "${displayName}"?\n\nTất cả tin nhắn và file đính kèm sẽ bị xóa vĩnh viễn và không thể khôi phục.`;
+    
+    if (window.confirm(confirmMessage)) {
+      try {
+        const response = await deleteConversation(conversation.ConversationID);
+        
+        if (response.code === 200) {
+          // Sử dụng alert thay vì toast nếu có vấn đề
+          alert(`Đã xóa cuộc trò chuyện "${displayName}"`);
+          
+          // Nếu conversation đang được chọn thì clear selection
+          if (selectedConversation?.ConversationID === conversation.ConversationID) {
+            onSelectConversation(null);
+          }
+          
+          // Gọi callback để refresh danh sách
+          if (onDeleteConversation) {
+            onDeleteConversation();
+          }
+        }
+      } catch (error) {
+        console.error("Error deleting conversation:", error);
+        alert("Không thể xóa cuộc trò chuyện. Vui lòng thử lại!");
+      }
+    }
+  };
 
   const formatLastMessageTime = (timestamp) => {
     if (!timestamp) return "";
@@ -113,25 +202,26 @@ export const ConversationList = ({
               onClick={() => onSelectConversation(conversation)}
             >
               <div className="conversation-avatar">
-                {conversation.ParticipantCount > 2 ? (
-                  <div className="avatar-group">
-                    <i className="fas fa-users"></i>
-                  </div>
-                ) : (
-                  <div className="avatar-single">
-                    <i className="fas fa-user"></i>
-                  </div>
-                )}
+                {getConversationAvatar(conversation)}
               </div>
 
               <div className="conversation-content">
                 <div className="conversation-header">
                   <h6 className="conversation-name">
-                    {conversation.Name || "Cuộc trò chuyện"}
+                    {getConversationDisplayName(conversation)}
                   </h6>
-                  <span className="conversation-time">
-                    {formatLastMessageTime(conversation.LastMessageAt)}
-                  </span>
+                  <div className="conversation-header-actions">
+                    <span className="conversation-time">
+                      {formatLastMessageTime(conversation.LastMessageTime)}
+                    </span>
+                    <button
+                      className="btn btn-sm btn-outline-danger conversation-delete-btn"
+                      onClick={(e) => handleDeleteConversation(conversation, e)}
+                      title="Xóa cuộc trò chuyện"
+                    >
+                      <i className="fas fa-trash-alt"></i>
+                    </button>
+                  </div>
                 </div>
                 <div className="conversation-message">
                   <p>{conversation.LastMessage || "Chưa có tin nhắn"}</p>
