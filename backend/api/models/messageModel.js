@@ -123,7 +123,7 @@ module.exports.createModelMessage = async (conversationId, userId, modelId, cont
     .request()
     .input("ConversationID", sql.BigInt, conversationId)
     .input("UserID", sql.Int, userId) // Sử dụng UserID thực tế thay vì NULL
-    .input("ModelID", sql.BigInt, modelId)
+    .input("ModelID", sql.BigInt, modelId) // Có thể là null cho .env fallback
     .input("Content", sql.NVarChar(sql.MAX), content)
     .input("MessageType", sql.NVarChar(50), messageType)
     .input("Timestamp", sql.DateTime, new Date())
@@ -132,7 +132,10 @@ module.exports.createModelMessage = async (conversationId, userId, modelId, cont
       OUTPUT INSERTED.MessageID
       VALUES (@ConversationID, @UserID, @ModelID, @Content, @MessageType, @Timestamp)
     `);
-  return result.recordset[0].MessageID;
+  
+  const messageId = result.recordset[0].MessageID;
+  console.log("✅ Model message created successfully with ID:", messageId);
+  return messageId;
 };
 
 /**

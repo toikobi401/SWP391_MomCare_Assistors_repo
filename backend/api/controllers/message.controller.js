@@ -318,15 +318,26 @@ module.exports.sendModelMessage = async (req, res) => {
   try {
     const { conversationId, userId, modelId, content, messageType = "text" } = req.body;
 
-    if (!conversationId || !userId || !modelId || !content) {
+    if (!conversationId || !userId || !content) {
       return res.status(400).json({
         code: 400,
-        message: "Thiếu thông tin: conversationId, userId, modelId, content!",
+        message: "Thiếu thông tin: conversationId, userId, content!",
       });
+    }
+
+    // modelId có thể là null cho .env fallback model
+    console.log("💾 Creating model message with modelId:", modelId);
+
+    // Nếu modelId là null, có thể tạo "virtual model" hoặc để null
+    // Hiện tại cho phép null để phân biệt với user messages
+    if (modelId === null) {
+      console.log("⚠️ Using null modelId for .env fallback response");
     }
 
     // Tạo message
     const messageId = await MessageModel.createModelMessage(conversationId, userId, modelId, content, messageType);
+
+    console.log("✅ Model message created with ID:", messageId);
 
     // Lấy lại message vừa tạo
     const message = await MessageModel.getMessageById(messageId);

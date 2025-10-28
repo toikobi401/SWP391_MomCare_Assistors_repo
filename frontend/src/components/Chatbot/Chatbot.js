@@ -2,19 +2,29 @@ import React, { useEffect, useRef, useState } from "react";
 import ChatbotIcon from "./components/ChatbotIcon";
 import ChatForm from "./components/ChatForm";
 import ChatMessage from "./components/ChatMessage";
-import { LuBot, LuChevronDown, LuX } from "react-icons/lu";
+import { LuChevronDown, LuX } from "react-icons/lu";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { useAuth } from "../../hooks/useAuth";
 import { getChatbotModel, sendMessageWithAIResponse, getAllAIModels } from "../../services/aiService";
-import { createOrGetChatbotConversation } from "../../services/chatApi";
+import { createOrGetChatbotConversation, getMessages, sendUserMessage } from "../../services/chatApi";
 
 // Giữ nguyên fallback cho trường hợp cần thiết
-const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
-const ai = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+const apiKey = process.env.REACT_APP_GEMINI_API_KEY || "AIzaSyBaawGhWsfTmyeMxCrbB4Q8YM98DNFPDSk";
 
-if (!apiKey) {
-  console.warn("REACT_APP_GEMINI_API_KEY chưa được thiết lập. Chatbot sẽ sử dụng thông báo lỗi mặc định.");
-}
+// Function để khởi tạo AI an toàn
+const getAIInstance = () => {
+  if (!apiKey) {
+    console.warn("REACT_APP_GEMINI_API_KEY chưa được thiết lập.");
+    return null;
+  }
+  
+  try {
+    return new GoogleGenerativeAI(apiKey);
+  } catch (error) {
+    console.error("❌ Error initializing GoogleGenerativeAI:", error);
+    return null;
+  }
+};
 export const Chatbot = () => {
   const [chatHistory, setChatHistory] = useState([]);
   const [showChat, setShowChat] = useState(false);
@@ -46,28 +56,31 @@ export const Chatbot = () => {
 
       // Chỉ load AI model từ database khi user đã đăng nhập
       if (!isLogin || !infoUser?.UserID) {
-        console.log("👤 Guest user - using fallback .env AI model");
+        console.log("👤 Guest user detected - using .env AI only, no database operations");
         setUseDatabase(false);
         setAiModel(null);
         setChatbotConversation(null);
         setAvailableModels([]);
+        setChatHistory([]); // Clear chat history for guest users
         return;
       }
 
+      console.log("🔑 Logged user detected - setting up database AI integration");
       try {
         const model = await getChatbotModel();
         if (model) {
           setAiModel(model);
-          console.log("✅ Loaded AI model from database:", model.Name);
+          console.log("✅ Database AI model loaded:", model.Name);
           
           // Tạo hoặc lấy chatbot conversation cho user đã đăng nhập
           await createChatbotConversation(model.ModelID);
         } else {
-          console.warn("⚠️ No AI model found in database, falling back to .env");
+          console.warn("⚠️ No database AI model found, using .env fallback");
           setUseDatabase(false);
         }
       } catch (error) {
-        console.error("❌ Error loading AI model:", error);
+        console.error("❌ Error loading database AI model:", error);
+        console.log("🔄 Falling back to .env AI model");
         setUseDatabase(false);
       }
     };
@@ -75,26 +88,158 @@ export const Chatbot = () => {
     loadAIModel();
   }, [isLogin, infoUser]);
 
-  // Tạo hoặc lấy chatbot conversation (chỉ cho user đã đăng nhập)
+  // Tạo hoặc lấy chatbot conversation (CHỈ CHO LOGGED USERS)
   const createChatbotConversation = async (modelId) => {
-    // Chỉ tạo conversation khi user đã đăng nhập
+    // CHỈ tạo conversation khi user đã đăng nhập
     if (!isLogin || !infoUser?.UserID) {
-      console.log("👤 Guest user - skipping conversation creation");
+      console.log("👤 Guest user - skip conversation creation, using local state only");
       return;
     }
 
     try {
       const userId = infoUser.UserID;
+      console.log(`🔄 Creating/getting chatbot conversation for user ${userId}, model ${modelId}`);
       const result = await createOrGetChatbotConversation(userId, modelId);
       
       if (result.code === 200) {
         setChatbotConversation(result.data);
-        console.log(`✅ Chatbot conversation ready: ${result.data.ConversationID}`);
+        console.log(`✅ Chatbot conversation ready for database operations: ${result.data.ConversationID}`);
+        
+        // Load messages từ database sau khi conversation sẵn sàng
+        await loadMessagesFromDatabase(result.data.ConversationID);
       } else {
         console.error("❌ Failed to create chatbot conversation:", result.message);
       }
     } catch (error) {
       console.error("❌ Error creating chatbot conversation:", error);
+    }
+  };
+
+  // Load messages từ database (CHỈ CHO LOGGED USERS)
+  const loadMessagesFromDatabase = async (conversationId) => {
+    // CHỈ tải messages khi user đã đăng nhập
+    if (!isLogin || !infoUser?.UserID) {
+      console.log("👤 Guest user - skip loading messages from database");
+      return;
+    }
+
+    try {
+      console.log(`📥 Loading messages from database for conversation: ${conversationId}`);
+      const result = await getMessages(conversationId);
+      
+      if (result.code === 200 && result.data) {
+        // Convert database messages to chatHistory format
+        const messages = result.data.map(msg => ({
+          // Logic phân biệt role:
+          // - Nếu có ModelID (khác null) thì là tin nhắn từ AI model → role = "model"
+          // - Nếu có UserID và không có ModelID thì là tin nhắn từ user → role = "user"
+          role: msg.ModelID ? "model" : "user",
+          text: msg.Content,
+          timestamp: msg.Timestamp,
+          messageId: msg.MessageID,
+          // Thêm thông tin ảnh từ attachments
+          image: (() => {
+            const attachments = msg.Attachments || [];
+            const imageAttachment = attachments.find(att => {
+              const fileName = att.OriginalFileName || "";
+              const ext = fileName.split(".").pop()?.toLowerCase();
+              return ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext);
+            });
+            return imageAttachment ? imageAttachment.StorageURL : null;
+          })()
+        }));
+        
+        setChatHistory(messages);
+        console.log(`✅ Loaded ${messages.length} messages from database (logged user)`);
+      }
+    } catch (error) {
+      console.error("❌ Error loading messages from database:", error);
+    }
+  };
+
+  // Lưu tin nhắn user vào database
+  const saveUserMessageToDatabase = async (content, messageType = "text", attachments = []) => {
+    // CHỈ LƯU KHI: User đã đăng nhập và có conversation
+    if (!isLogin || !infoUser?.UserID || !chatbotConversation) {
+      console.log("👤 Skip saving user message: Guest user or no conversation setup");
+      return null;
+    }
+
+    try {
+      console.log("💾 Saving user message to database (logged user)...", {
+        content,
+        messageType,
+        attachments: attachments.length
+      });
+      
+      const result = await sendUserMessage({
+        conversationId: chatbotConversation.ConversationID,
+        userId: infoUser.UserID,
+        content: content,
+        messageType: messageType,
+        attachments: attachments
+      });
+
+      if (result.code === 200) {
+        console.log("✅ User message saved to database successfully");
+        return result.data;
+      } else {
+        console.error("❌ Failed to save user message:", result.message);
+        return null;
+      }
+    } catch (error) {
+      console.error("❌ Error saving user message to database:", error);
+      return null;
+    }
+  };
+
+  // Lưu AI response vào database (CHỈ CHO FALLBACK .env MODEL)
+  const saveAIResponseToDatabase = async (content, messageType = "text") => {
+    // CHỈ LƯU KHI: User đã đăng nhập, có conversation và đang dùng .env fallback
+    if (!isLogin || !infoUser?.UserID || !chatbotConversation) {
+      console.log("👤 Skip saving AI response: Guest user or no conversation");
+      return null;
+    }
+
+    try {
+      console.log("💾 Saving AI response to database (.env fallback mode)...");
+      
+      // Sử dụng modelId của AI model hiện tại thay vì null
+      // Điều này giúp phân biệt AI responses với user messages
+      const modelIdToUse = aiModel?.ModelID || null;
+      
+      const requestBody = {
+        conversationId: chatbotConversation.ConversationID,
+        userId: infoUser.UserID,
+        modelId: modelIdToUse, // Sử dụng modelId hiện tại thay vì null
+        content: content,
+        messageType: messageType
+      };
+
+      // Gọi API để lưu AI response từ .env model
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/messages/send-model`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody)
+      });
+
+      console.log("📨 API response status:", response.status);
+      const result = await response.json();
+      console.log("📋 API response data:", result);
+
+      if (result.code === 200) {
+        console.log("✅ AI response (.env fallback) saved to database successfully");
+        return result.data;
+      } else {
+        console.error("❌ Failed to save AI response:", result.message);
+        return null;
+      }
+    } catch (error) {
+      console.error("❌ Error saving AI response to database:", error);
+      return null;
     }
   };
 
@@ -174,11 +319,24 @@ export const Chatbot = () => {
   }
 
   const generateBotResponse = async (history, imageFile = null) => {
-    const updateHistory = (text) => {
+    const updateHistory = async (text, isFromDatabaseAI = false) => {
       setChatHistory((prev) => [
         ...prev.filter((msg) => msg.text !== "Thinking..."),
         { role: "model", text },
       ]);
+
+      // Chỉ lưu AI response vào database khi:
+      // 1. Không phải từ database AI (tránh duplicate - database AI đã tự lưu)
+      // 2. User đã đăng nhập
+      // 3. Có conversation để lưu vào  
+      if (!isFromDatabaseAI && isLogin && chatbotConversation && infoUser?.UserID) {
+        console.log("💾 Saving AI response to database (.env fallback mode)");
+        await saveAIResponseToDatabase(text);
+      } else if (!isLogin) {
+        console.log("👤 Guest user - AI response not saved to database");
+      } else if (isFromDatabaseAI) {
+        console.log("🤖 Database AI response - already saved by API, no duplicate save needed");
+      }
     };
 
     // Tạo system prompt với thông tin user để cá nhân hóa
@@ -204,61 +362,105 @@ export const Chatbot = () => {
     }
 
     try {
-      // Chỉ sử dụng database AI khi user đã đăng nhập
-      if (useDatabase && isLogin && infoUser?.UserID && aiModel && chatbotConversation && !imageFile) {
-        console.log("🤖 Using database AI model:", aiModel.Name);
+      // SỬ DỤNG DATABASE AI: Cho logged users (bao gồm cả xử lý ảnh)
+      if (isLogin && infoUser?.UserID && aiModel && chatbotConversation) {
+        console.log("🤖 Using database AI model for logged user:", {
+          modelName: aiModel.Name,
+          modelID: aiModel.ModelID,
+          conversationID: chatbotConversation.ConversationID,
+          userID: infoUser.UserID
+        });
         
         const lastMessage = history[history.length - 1];
         
-        // Gọi API backend với AI model từ database và conversation thực sự
-        const result = await sendMessageWithAIResponse({
-          content: lastMessage.text,
-          modelId: aiModel.ModelID,
-          systemPrompt: systemPrompt,
-          conversationId: chatbotConversation.ConversationID, // Sử dụng conversation thực sự
-          userId: infoUser.UserID, // UserID có thật
-          messageType: "text"
-        });
-
-        if (result.success && result.aiMessage) {
-          const responseText = result.aiMessage.Content;
-          const formattedResponse = formatAIResponse(responseText);
-          updateHistory(formattedResponse);
-          return;
-        } else if (result.success && result.partial) {
-          // AI failed but user message sent
-          updateHistory(`Đã ghi nhận tin nhắn nhưng AI hiện tại không thể phản hồi: ${result.aiError}`);
-          return;
+        // Xử lý ảnh cho logged users bằng database AI
+        if (imageFile) {
+          console.log("📸 Processing image with database AI model for logged user");
+          
+          // TODO: Implement image processing với database AI
+          // Hiện tại backend chưa hỗ trợ image, tạm fallback về .env
+          console.warn("⚠️ Database AI chưa hỗ trợ ảnh, fallback về .env AI");
         } else {
-          console.warn("Database AI failed, falling back to .env model");
+          // Xử lý text với database AI
+          console.log("📝 Sending message to database AI:", {
+            content: lastMessage.text,
+            modelId: aiModel.ModelID,
+            conversationId: chatbotConversation.ConversationID,
+            userId: infoUser.UserID
+          });
+
+          const result = await sendMessageWithAIResponse({
+            content: lastMessage.text,
+            modelId: aiModel.ModelID,
+            systemPrompt: systemPrompt,
+            conversationId: chatbotConversation.ConversationID,
+            userId: infoUser.UserID,
+            messageType: "text"
+          });
+
+          console.log("📋 Database AI response result:", result);
+
+          if (result.success && result.aiMessage) {
+            const responseText = result.aiMessage.Content;
+            console.log("✅ Database AI response successful:", {
+              messageID: result.aiMessage.MessageID,
+              content: responseText.substring(0, 100) + "..."
+            });
+            const formattedResponse = formatAIResponse(responseText);
+            await updateHistory(formattedResponse, true); // true = từ database AI, đã được API tự động lưu
+            return;
+          } else if (result.success && result.partial) {
+            // AI failed nhưng user message đã được lưu - cần lưu error message
+            console.log("⚠️ Database AI partial success - saving error message:", result.aiError);
+            await updateHistory(`Đã ghi nhận tin nhắn nhưng AI hiện tại không thể phản hồi: ${result.aiError}`, false); // false = cần lưu error message
+            return;
+          } else {
+            console.warn("❌ Database AI failed completely:", result);
+            console.warn("🔄 Falling back to .env model");
+          }
         }
       }
 
-      // Fallback: Sử dụng .env API key (cho guest user hoặc khi database AI fail)
+      // SỬ DỤNG .ENV AI: Cho guest users hoặc khi database AI fail
+      // Khởi tạo AI instance một cách an toàn
+      const ai = getAIInstance();
       if (!ai) {
-        updateHistory("Chức năng AI đang bị vô hiệu do thiếu khóa cấu hình. Vui lòng liên hệ quản trị viên.");
+        console.error("❌ Cannot initialize AI - API key:", apiKey ? "present but invalid" : "missing");
+        await updateHistory("Chức năng AI đang bị vô hiệu do thiếu khóa cấu hình. Vui lòng liên hệ quản trị viên.");
         return;
       }
 
-      console.log(isLogin ? "🔄 Falling back to .env AI model" : "👤 Guest user using .env AI model");
+      if (imageFile && isLogin) {
+        console.log("📸 Processing image with .env AI (fallback for logged user)");
+      } else if (imageFile && !isLogin) {
+        console.log("📸 Processing image with .env AI (guest user)");
+      }
 
       let response;
 
       // Nếu có ảnh, sử dụng Gemini Vision
       if (imageFile) {
-        const base64Image = await fileToBase64(imageFile);
+        console.log("📸 Processing image with Gemini Vision...");
         
-        const imagePart = {
-          inlineData: {
-            data: base64Image.split(',')[1], // Loại bỏ phần "data:image/...;base64,"
-            mimeType: imageFile.type
-          }
-        };
+        try {
+          const base64Image = await fileToBase64(imageFile);
+          
+          const imagePart = {
+            inlineData: {
+              data: base64Image.split(',')[1], // Loại bỏ phần "data:image/...;base64,"
+              mimeType: imageFile.type
+            }
+          };
 
-        const lastMessage = history[history.length - 1];
-        const textPart = { text: systemPrompt + "\n\n" + lastMessage.text };
+          const lastMessage = history[history.length - 1];
+          const textPart = { text: systemPrompt + "\n\n" + lastMessage.text };
 
-        response = await ai.getGenerativeModel({ model: "gemini-2.5-flash" }).generateContent([textPart, imagePart]);
+          response = await ai.getGenerativeModel({ model: "gemini-2.5-flash" }).generateContent([textPart, imagePart]);
+        } catch (imageError) {
+          console.error("❌ Error processing image:", imageError);
+          await updateHistory("Có lỗi xảy ra khi xử lý hình ảnh. Vui lòng thử lại.", false);
+          return;
+        }
       } else {
         // Thêm system prompt vào đầu history và normalize roles cho Google AI
         // Lọc bỏ system messages vì Google AI không hỗ trợ role "system"
@@ -277,18 +479,27 @@ export const Chatbot = () => {
         });
       }
 
-      console.log(response);
-
       const rawText =
         response?.response?.text() ||
         "Không có phản hồi từ AI!";
 
       const apiResponseText = formatAIResponse(rawText);
 
-      updateHistory(apiResponseText);
+      // Lưu AI response vào database cho logged users, không lưu cho guest users
+      if (isLogin && chatbotConversation && infoUser?.UserID) {
+        await updateHistory(apiResponseText, false); // false = cần lưu vào database
+      } else {
+        await updateHistory(apiResponseText, false); // Guest user - chỉ update local state
+      }
     } catch (error) {
       console.error("Something wrong happened", error);
-      updateHistory("Hiện tại hệ thống đang có vấn đề, xin hãy quay lại sau!");
+      
+      // Error handling cũng phân biệt logged/guest users
+      if (isLogin && chatbotConversation && infoUser?.UserID) {
+        await updateHistory("Hiện tại hệ thống đang có vấn đề, xin hãy quay lại sau!", false);
+      } else {
+        await updateHistory("Hiện tại hệ thống đang có vấn đề, xin hãy quay lại sau!", true);
+      }
     }
   };
 
@@ -341,7 +552,16 @@ export const Chatbot = () => {
         id="chatbot-toggler"
       >
         <span>
-          <LuBot />
+          <img 
+            src="/images/AI_logo/01.png" 
+            alt="AI Assistant" 
+            style={{
+              width: "24px", 
+              height: "24px", 
+              borderRadius: "50%", 
+              objectFit: "cover"
+            }}
+          />
         </span>
         <span>
           <LuX />
@@ -449,6 +669,9 @@ export const Chatbot = () => {
             chatHistory={chatHistory}
             setChatHistory={setChatHistory}
             generateBotResponse={generateBotResponse}
+            saveUserMessage={saveUserMessageToDatabase}
+            isLogin={isLogin}
+            chatbotConversation={chatbotConversation}
           />
         </div>
       </div>

@@ -1,9 +1,22 @@
 
 import React from "react";
-import { FiMessageSquare } from "react-icons/fi";
 
 const ChatbotIcon = () => {
-    return <FiMessageSquare style={{height: "35px", width: "35px", padding:"6px", borderRadius:"50%", fill:"white", backgroundColor:"black", flexShrink:"0"}}/>
+    return (
+        <img 
+            src="/images/AI_logo/01.png" 
+            alt="AI Assistant" 
+            style={{
+                height: "35px", 
+                width: "35px", 
+                borderRadius: "50%", 
+                flexShrink: "0",
+                objectFit: "cover",
+                border: "2px solid #e0e0e0",
+                backgroundColor: "white"
+            }}
+        />
+    );
 };
 
 export default ChatbotIcon;
