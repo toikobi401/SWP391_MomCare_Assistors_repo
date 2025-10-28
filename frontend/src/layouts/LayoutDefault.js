@@ -17,8 +17,8 @@ export const LayoutDefault = () => {
 
   const mainStyle = pathStyle[location.pathname] || location.default;
 
-  const noFooterPaths = ["/dashboard", "/profile"];
-  const noChatbotPaths = ["/dashboard"];
+  const noFooterPaths = ["/dashboard", "/chat"];
+  const noChatbotPaths = [];
   const showFooter = !noFooterPaths.includes(location.pathname);
   const showChatbot = !noChatbotPaths.includes(location.pathname);
 
