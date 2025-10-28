@@ -112,15 +112,17 @@ module.exports.createUserMessage = async (conversationId, userId, content, messa
 /**
  * 🧩 Tạo message mới từ AI model
  * @param {number} conversationId - ID cuộc trò chuyện
+ * @param {number} userId - ID người dùng (owner của conversation)
  * @param {number} modelId - ID mô hình AI
  * @param {string} content - Nội dung tin nhắn
  * @param {string} messageType - Loại tin nhắn (text, image, file, system)
  */
-module.exports.createModelMessage = async (conversationId, modelId, content, messageType = "text") => {
+module.exports.createModelMessage = async (conversationId, userId, modelId, content, messageType = "text") => {
   const pool = await database.connect();
   const result = await pool
     .request()
     .input("ConversationID", sql.BigInt, conversationId)
+    .input("UserID", sql.Int, userId) // Sử dụng UserID thực tế thay vì NULL
     .input("ModelID", sql.BigInt, modelId)
     .input("Content", sql.NVarChar(sql.MAX), content)
     .input("MessageType", sql.NVarChar(50), messageType)
@@ -128,7 +130,7 @@ module.exports.createModelMessage = async (conversationId, modelId, content, mes
     .query(`
       INSERT INTO Messages (ConversationID, UserID, ModelID, Content, MessageType, Timestamp)
       OUTPUT INSERTED.MessageID
-      VALUES (@ConversationID, NULL, @ModelID, @Content, @MessageType, @Timestamp)
+      VALUES (@ConversationID, @UserID, @ModelID, @Content, @MessageType, @Timestamp)
     `);
   return result.recordset[0].MessageID;
 };

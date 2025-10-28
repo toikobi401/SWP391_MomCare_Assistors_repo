@@ -264,3 +264,44 @@ module.exports.deleteConversation = async (req, res) => {
     });
   }
 };
+
+/**
+ * [POST] /api/conversations/create-chatbot
+ * Tạo hoặc lấy cuộc hội thoại với chatbot float
+ * Body: { userId, modelId }
+ */
+module.exports.createOrGetChatbotConversation = async (req, res) => {
+  try {
+    const { userId, modelId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        code: 400,
+        message: "Thiếu thông tin: userId! Chỉ user đã đăng nhập mới có thể tạo chatbot conversation.",
+      });
+    }
+
+    if (!modelId) {
+      return res.status(400).json({
+        code: 400,
+        message: "Thiếu thông tin: modelId!",
+      });
+    }
+
+    // Tạo hoặc lấy chatbot conversation
+    const conversation = await ConversationModel.createOrGetChatbotConversation(userId, modelId);
+
+    return res.json({
+      code: 200,
+      message: "Lấy chatbot conversation thành công!",
+      data: conversation,
+    });
+  } catch (error) {
+    console.error("Error creating/getting chatbot conversation:", error);
+    return res.status(500).json({
+      code: 500,
+      message: "Lỗi khi tạo chatbot conversation!",
+      error: error.message,
+    });
+  }
+};

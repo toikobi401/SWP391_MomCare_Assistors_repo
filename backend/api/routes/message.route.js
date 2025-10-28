@@ -12,6 +12,9 @@ router.get("/detail/:messageId", controller.getMessageDetail);
 // Gửi message từ user
 router.post("/send-user", controller.sendUserMessage);
 
+// Gửi message với AI auto-response (sử dụng models từ database)
+router.post("/send-with-ai-response", controller.sendMessageWithAIResponse);
+
 // Gửi message từ AI model
 router.post("/send-model", controller.sendModelMessage);
 

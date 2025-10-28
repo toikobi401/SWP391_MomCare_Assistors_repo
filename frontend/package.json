@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@google/genai": "^1.25.0",
+    "@google/generative-ai": "^0.24.1",
     "@react-oauth/google": "^0.12.2",
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^13.4.0",

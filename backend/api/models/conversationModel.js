@@ -330,3 +330,88 @@ module.exports.deleteConversation = async (conversationId) => {
     throw error;
   }
 };
+
+/**
+ * 🧩 Tạo hoặc lấy conversation cho chatbot float của user
+ * @param {number} userId - ID của user (bắt buộc phải có)
+ * @param {number} modelId - ID của AI model
+ * @returns {object} - Chatbot conversation
+ */
+module.exports.createOrGetChatbotConversation = async (userId, modelId) => {
+  const pool = await database.connect();
+  
+  try {
+    // Kiểm tra userId bắt buộc phải có
+    if (!userId) {
+      throw new Error("UserID is required for chatbot conversation");
+    }
+
+    // Kiểm tra xem đã có chatbot conversation cho user này chưa
+    let conversation = null;
+    
+    // Tìm conversation chatbot của user (name có chứa "Chatbot" và user tham gia)
+    const result = await pool
+      .request()
+      .input("UserID", sql.Int, userId)
+      .input("ModelID", sql.BigInt, modelId)
+      .query(`
+        SELECT TOP 1 c.ConversationID, c.Name, c.CreateAt
+        FROM Conversations c
+        INNER JOIN Participant p1 ON c.ConversationID = p1.ConversationID
+        INNER JOIN Participant p2 ON c.ConversationID = p2.ConversationID
+        WHERE c.Name LIKE '%Chatbot%'
+          AND p1.UserID = @UserID 
+          AND p2.ModelID = @ModelID
+        ORDER BY c.CreateAt DESC
+      `);
+    
+    conversation = result.recordset[0];
+    
+    if (!conversation) {
+      // Tạo conversation mới cho chatbot
+      const conversationName = `Chatbot Assistant - User ${userId}`;
+      
+      const insertResult = await pool
+        .request()
+        .input("Name", sql.NVarChar(50), conversationName)
+        .input("CreateAt", sql.DateTime, new Date())
+        .query(`
+          INSERT INTO Conversations (Name, CreateAt)
+          OUTPUT INSERTED.ConversationID, INSERTED.Name, INSERTED.CreateAt
+          VALUES (@Name, @CreateAt)
+        `);
+      
+      conversation = insertResult.recordset[0];
+      
+      // Thêm user participant
+      await pool
+        .request()
+        .input("ConversationID", sql.BigInt, conversation.ConversationID)
+        .input("UserID", sql.Int, userId)
+        .query(`
+          INSERT INTO Participant (ConversationID, UserID, ModelID)
+          VALUES (@ConversationID, @UserID, NULL)
+        `);
+      
+      // Thêm AI model participant với UserID của user để tránh NULL
+      await pool
+        .request()
+        .input("ConversationID", sql.BigInt, conversation.ConversationID)
+        .input("UserID", sql.Int, userId) // Sử dụng UserID thực tế thay vì NULL
+        .input("ModelID", sql.BigInt, modelId)
+        .query(`
+          INSERT INTO Participant (ConversationID, UserID, ModelID)
+          VALUES (@ConversationID, @UserID, @ModelID)
+        `);
+      
+      console.log(`✅ Created new chatbot conversation: ${conversation.ConversationID} for user ${userId}`);
+    } else {
+      console.log(`♻️ Using existing chatbot conversation: ${conversation.ConversationID} for user ${userId}`);
+    }
+    
+    return conversation;
+  } catch (error) {
+    console.error("Error in createOrGetChatbotConversation:", error);
+    throw error;
+  }
+};

@@ -1,5 +1,6 @@
 const MessageModel = require("../models/messageModel");
 const AttachmentModel = require("../models/attachmentModel");
+const aiService = require("../services/aiService");
 const fetch = require('node-fetch');
 
 /**
@@ -162,23 +163,170 @@ module.exports.sendUserMessage = async (req, res) => {
 };
 
 /**
+ * [POST] /api/messages/send-with-ai-response
+ * Gửi message từ user và nhận auto-response từ AI model trong database
+ * Body: { conversationId, userId, content, messageType, modelId, attachments: [], systemPrompt }
+ */
+module.exports.sendMessageWithAIResponse = async (req, res) => {
+  try {
+    const { 
+      conversationId, 
+      userId, 
+      content, 
+      messageType = "text", 
+      modelId, 
+      attachments = [],
+      systemPrompt = null
+    } = req.body;
+
+    if (!conversationId || !userId || !content || !modelId) {
+      return res.status(400).json({
+        code: 400,
+        message: "Thiếu thông tin: conversationId, userId, content, modelId!",
+      });
+    }
+
+    // Kiểm tra xem AI model có available không
+    const isModelAvailable = await aiService.isModelAvailable(modelId);
+    if (!isModelAvailable) {
+      return res.status(400).json({
+        code: 400,
+        message: `AI model với ID ${modelId} không khả dụng!`,
+      });
+    }
+
+    // 1. Tạo message từ user trước
+    const userMessageId = await MessageModel.createUserMessage(conversationId, userId, content, messageType);
+
+    // Tạo attachments nếu có
+    for (let attachment of attachments) {
+      await AttachmentModel.createAttachment(
+        userMessageId,
+        attachment.fileName,
+        attachment.fileSize,
+        attachment.url
+      );
+    }
+
+    // Lấy user message vừa tạo
+    const userMessage = await MessageModel.getMessageById(userMessageId);
+    userMessage.Attachments = await AttachmentModel.getAttachmentsByMessageId(userMessageId);
+
+    // 2. Lấy lịch sử chat để cung cấp context cho AI
+    const chatHistory = await MessageModel.getMessagesByConversationId(conversationId, 20, 0); // Lấy 20 tin nhắn gần nhất
+    
+    // Chuyển đổi format cho AI service
+    const historyForAI = chatHistory.map(msg => ({
+      role: msg.UserID ? "user" : "assistant",
+      content: msg.Content,
+      text: msg.Content
+    }));
+
+    // 3. Tạo system prompt tùy chỉnh
+    let finalSystemPrompt = systemPrompt || "Bạn là trợ lý AI thông minh hỗ trợ về chăm sóc sức khỏe mẹ và bé của hệ thống MomCare. Hãy trả lời một cách thân thiện, chính xác và hữu ích.";
+
+    // Kết hợp system prompt với user message
+    const promptForAI = `${finalSystemPrompt}\n\nUser message: ${content}`;
+
+    // 4. Generate AI response
+    console.log(`🤖 Generating AI response for conversation ${conversationId} using model ${modelId}...`);
+    
+    const aiResponse = await aiService.generateResponse(
+      modelId, 
+      promptForAI, 
+      historyForAI
+    );
+
+    if (!aiResponse.success) {
+      console.error(`AI response generation failed:`, aiResponse.error);
+      
+      // Vẫn trả về user message thành công, chỉ thông báo lỗi AI
+      return res.status(206).json({ // 206 Partial Content
+        code: 206,
+        message: "Gửi message thành công nhưng AI không thể phản hồi!",
+        data: {
+          userMessage,
+          aiError: aiResponse.error
+        }
+      });
+    }
+
+    // 5. Tạo AI response message
+    const aiMessageId = await MessageModel.createModelMessage(
+      conversationId, 
+      userId, // Thêm userId vào đây
+      modelId, 
+      aiResponse.data.text, 
+      "text"
+    );
+
+    const aiMessage = await MessageModel.getMessageById(aiMessageId);
+
+    // 6. Emit socket events để notify real-time
+    const io = req.app.get('io');
+    if (io) {
+      // Emit user message trước
+      io.to(`conversation_${conversationId}`).emit('new_message', {
+        conversationId,
+        message: userMessage
+      });
+
+      // Delay ngắn rồi emit AI response
+      setTimeout(() => {
+        io.to(`conversation_${conversationId}`).emit('new_message', {
+          conversationId,
+          message: aiMessage
+        });
+      }, 1000);
+
+      // Update conversation list cho participants
+      const ConversationModel = require("../models/conversationModel");
+      const participants = await ConversationModel.getParticipants(conversationId);
+      participants.forEach(participant => {
+        io.to(`user_${participant.UserID}`).emit('conversation_updated', {
+          conversationId
+        });
+      });
+    }
+
+    return res.json({
+      code: 200,
+      message: "Gửi message và nhận AI response thành công!",
+      data: {
+        userMessage,
+        aiMessage,
+        aiModel: aiResponse.data.model,
+        usage: aiResponse.data.tokens
+      }
+    });
+  } catch (error) {
+    console.error("Error in sendMessageWithAIResponse:", error);
+    return res.status(500).json({
+      code: 500,
+      message: "Lỗi khi gửi message với AI response!",
+      error: error.message,
+    });
+  }
+};
+
+/**
  * [POST] /api/messages/send-model
  * Gửi message từ AI model
- * Body: { conversationId, modelId, content, messageType }
+ * Body: { conversationId, userId, modelId, content, messageType }
  */
 module.exports.sendModelMessage = async (req, res) => {
   try {
-    const { conversationId, modelId, content, messageType = "text" } = req.body;
+    const { conversationId, userId, modelId, content, messageType = "text" } = req.body;
 
-    if (!conversationId || !modelId || !content) {
+    if (!conversationId || !userId || !modelId || !content) {
       return res.status(400).json({
         code: 400,
-        message: "Thiếu thông tin: conversationId, modelId, content!",
+        message: "Thiếu thông tin: conversationId, userId, modelId, content!",
       });
     }
 
     // Tạo message
-    const messageId = await MessageModel.createModelMessage(conversationId, modelId, content, messageType);
+    const messageId = await MessageModel.createModelMessage(conversationId, userId, modelId, content, messageType);
 
     // Lấy lại message vừa tạo
     const message = await MessageModel.getMessageById(messageId);

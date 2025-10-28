@@ -15,6 +15,9 @@ router.post("/create", controller.createConversation);
 // Tạo hoặc lấy cuộc hội thoại 1-1 (tương tự Messenger)
 router.post("/create-private", controller.createPrivateConversation);
 
+// Tạo hoặc lấy conversation với chatbot float
+router.post("/create-chatbot", controller.createOrGetChatbotConversation);
+
 // Thêm participant
 router.post("/:conversationId/add-participant", controller.addParticipant);
 

@@ -40,9 +40,11 @@ const ChatMessage = ({ chat, index, isEditing, onEdit, onSave, onCancel }) => {
   return (
     <div>
       <div
-        className={`message ${chat.role === "model" ? "bot" : "user"}-message`}
+        className={`message ${
+          chat.role === "model" || chat.role === "system" ? "bot" : "user"
+        }-message`}
       >
-        {chat.role === "model" && <ChatbotIcon/>}
+        {(chat.role === "model" || chat.role === "system") && <ChatbotIcon/>}
         
         {isEditing && chat.role === "user" ? (
           <div className="edit-container">
@@ -81,8 +83,8 @@ const ChatMessage = ({ chat, index, isEditing, onEdit, onSave, onCancel }) => {
                   className="message-image"
                 />
               )}
-              {/* Render HTML formatted text cho bot, plain text cho user */}
-              {chat.role === "model" ? (
+              {/* Render HTML formatted text cho bot/system, plain text cho user */}
+              {chat.role === "model" || chat.role === "system" ? (
                 <div 
                   className="message-text formatted" 
                   dangerouslySetInnerHTML={{ __html: chat.text }}
@@ -92,8 +94,8 @@ const ChatMessage = ({ chat, index, isEditing, onEdit, onSave, onCancel }) => {
               )}
             </div>
             
-            {/* Nút copy cho bot message */}
-            {chat.role === "model" && chat.text !== "Đang suy nghĩ..." && (
+            {/* Nút copy cho bot/system message */}
+            {(chat.role === "model" || chat.role === "system") && chat.text !== "Đang suy nghĩ..." && (
               <button 
                 className="copy-btn" 
                 onClick={handleCopy}

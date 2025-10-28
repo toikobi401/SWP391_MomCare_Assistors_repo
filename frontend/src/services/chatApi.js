@@ -71,6 +71,26 @@ export const createPrivateConversation = async (userId1, userId2) => {
 };
 
 /**
+ * Tạo hoặc lấy conversation với chatbot float
+ * @param {number} userId - ID user (có thể null cho guest)
+ * @param {number} modelId - ID AI model
+ */
+export const createOrGetChatbotConversation = async (userId, modelId) => {
+  try {
+    const response = await axios.post(`${API_URL}/conversations/create-chatbot`, {
+      userId,
+      modelId
+    }, {
+      withCredentials: true,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error creating/getting chatbot conversation:", error);
+    throw error;
+  }
+};
+
+/**
  * Thêm participant vào conversation
  */
 export const addParticipant = async (conversationId, userId, modelId = null) => {
